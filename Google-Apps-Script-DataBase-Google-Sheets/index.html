@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title id="page-title">Đang tải...</title>
+  <style>
+      body { text-align: center; font-family: Arial, sans-serif; }
+      #banner { width: 100%; max-height: 300px; object-fit: cover; background-color: #eee; }
+      .logo { width: 100px; height: auto; margin-top: 20px;}
+  </style>
+</head>
+<body>
+<div style="margin-bottom: 28px; display: flex; align-items: center; gap: 10px;">
+  Điều hướng test:
+  <ul style="list-style: none; padding: 0; margin: 0; display: flex; gap: 15px;">
+    <li><a href="index.html">Home</a></li>
+    <li><a href="admin.html">Admin</a></li>
+    <li><a target="_blank" href="https://docs.google.com/spreadsheets/d/1Nf3pbORymc9sKE-swZbdvKGdoPNKMkMlLzcNDE4tQCY">File Data</a></li>
+    <li><a target="_blank" href="https://gemini.google.com/share/19d1878bc55c">Gemini Chat</a></li>
+  </ul>
+</div>
+
+<img id="banner-img" id="banner" src="" alt="Banner">
+<br>
+<img id="logo-img" class="logo" src="" alt="Logo">
+
+<h1 id="heading">...</h1>
+<p id="description">...</p>
+
+<script>
+    const API_URL = 'https://script.google.com/macros/s/AKfycbyYftRfIhVsrJuMq6W4nLFwlbUz6ZcKs-hzkznr9vZlRKkBXVTXZnBq0aLgEomQzT4/exec';
+
+    async function fetchConfigAndRender() {
+        try {
+            // Cache-busting để luôn lấy mới nhất
+            const response = await fetch(`${API_URL}?t=${new Date().getTime()}`);
+            const resData = await response.json();
+
+            if (resData.status === 'success') {
+                const config = resData.data;
+
+                // Gán dữ liệu vào HTML (Kiểm tra xem config có tồn tại không trước khi gán)
+                if(config['SITE_TITLE']) {
+                    document.getElementById('page-title').innerText = config['SITE_TITLE'].value;
+                    document.getElementById('heading').innerText = config['SITE_TITLE'].value;
+                }
+                if(config['SITE_DESC']) {
+                    document.getElementById('description').innerText = config['SITE_DESC'].value;
+                }
+                if(config['BANNER_URL']) {
+                    document.getElementById('banner-img').src = config['BANNER_URL'].value;
+                }
+                if(config['LOGO_URL']) {
+                    document.getElementById('logo-img').src = config['LOGO_URL'].value;
+                }
+            }
+        } catch (error) {
+            console.error("Không thể tải cấu hình:", error);
+        }
+    }
+
+    window.onload = fetchConfigAndRender;
+</script>
+</body>
+</html>

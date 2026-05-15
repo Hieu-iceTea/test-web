@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Admin - Cấu hình Website</title>
+  <style>
+      body { font-family: Arial, sans-serif; padding: 20px; }
+      .config-item { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; display: flex; gap: 10px;}
+      input, button { padding: 5px; }
+      #add-form { margin-top: 20px; padding: 15px; background: #f9f9f9; border: 1px dashed #666;}
+  </style>
+</head>
+<body>
+<div style="margin-bottom: 28px; display: flex; align-items: center; gap: 10px;">
+  Điều hướng test:
+  <ul style="list-style: none; padding: 0; margin: 0; display: flex; gap: 15px;">
+    <li><a href="index.html">Home</a></li>
+    <li><a href="admin.html">Admin</a></li>
+    <li><a target="_blank" href="https://docs.google.com/spreadsheets/d/1Nf3pbORymc9sKE-swZbdvKGdoPNKMkMlLzcNDE4tQCY">File Data</a></li>
+    <li><a target="_blank" href="https://gemini.google.com/share/19d1878bc55c">Gemini Chat</a></li>
+  </ul>
+</div>
+
+<h2>Trang Quản Trị Cấu Hình</h2>
+<button onclick="loadData()">Tải lại dữ liệu</button>
+<p id="status-msg"></p>
+
+<div id="config-list">Đang tải...</div>
+
+<div id="add-form">
+  <h3>Thêm cấu hình mới</h3>
+  <input type="text" id="new-key" placeholder="Nhập KEY (VD: SITE_TITLE)">
+  <input type="text" id="new-value" placeholder="Nhập Giá trị">
+  <button onclick="createConfig()">Thêm Mới</button>
+</div>
+
+<script>
+    const API_URL = 'https://script.google.com/macros/s/AKfycbyYftRfIhVsrJuMq6W4nLFwlbUz6ZcKs-hzkznr9vZlRKkBXVTXZnBq0aLgEomQzT4/exec';
+
+    // Read (GET)
+    async function loadData() {
+        document.getElementById('config-list').innerHTML = "Đang tải...";
+        try {
+            // Thêm timestamp để tránh cache trình duyệt (Cache-busting)
+            const response = await fetch(`${API_URL}?t=${new Date().getTime()}`);
+            const resData = await response.json();
+
+            if (resData.status === 'success') {
+                renderList(resData.data);
+            }
+        } catch (error) {
+            document.getElementById('status-msg').innerText = "Lỗi kết nối: " + error;
+        }
+    }
+
+    function renderList(data) {
+        const container = document.getElementById('config-list');
+        container.innerHTML = '';
+
+        for (const [key, item] of Object.entries(data)) {
+            container.innerHTML += `
+                    <div class="config-item">
+                        <strong>${key}</strong>
+                        <input type="text" id="val-${key}" value="${item.value}">
+                        <input type="hidden" id="ver-${key}" value="${item.version}">
+                        <button onclick="updateConfig('${key}')">Lưu Sửa</button>
+                        <button onclick="deleteConfig('${key}')">Xóa</button>
+                    </div>
+                `;
+        }
+    }
+
+    // Create (POST)
+    async function createConfig() {
+        const key = document.getElementById('new-key').value;
+        const value = document.getElementById('new-value').value;
+        if(!key) return alert("Key không được trống");
+
+        await sendPostRequest({ action: 'CREATE', key: key, value: value });
+    }
+
+    // Update (POST) - Gửi kèm version để check Optimistic Locking
+    async function updateConfig(key) {
+        const value = document.getElementById(`val-${key}`).value;
+        const version = document.getElementById(`ver-${key}`).value;
+
+        await sendPostRequest({ action: 'UPDATE', key: key, value: value, version: Number(version) });
+    }
+
+    // Delete (POST)
+    async function deleteConfig(key) {
+        if(!confirm(`Bạn chắc chắn muốn xóa ${key}?`)) return;
+        await sendPostRequest({ action: 'DELETE', key: key });
+    }
+
+    // Hàm helper gọi API chung
+    async function sendPostRequest(payload) {
+        document.getElementById('status-msg').innerText = "Đang xử lý...";
+        try {
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+            const resData = await response.json();
+
+            if (resData.status === 'conflict') {
+                alert("CẢNH BÁO: " + resData.message);
+                loadData(); // Tự động load lại bản mới nhất từ server
+            } else if (resData.status === 'success') {
+                document.getElementById('status-msg').innerText = "Thành công!";
+                loadData(); // Cập nhật lại giao diện
+            } else {
+                alert("Lỗi: " + resData.message);
+            }
+        } catch (error) {
+            document.getElementById('status-msg').innerText = "Lỗi mạng: " + error;
+        }
+    }
+
+    // Tự động tải dữ liệu khi mở trang
+    window.onload = loadData;
+</script>
+</body>
+</html>
