@@ -1,3 +1,7 @@
+function capQuyenEmail() {
+  MailApp.sendEmail(Session.getActiveUser().getEmail(), "Test quyền", "Cấp quyền thành công!");
+}
+
 // ==============================================================================
 // 1. CẤU HÌNH & HẰNG SỐ (CONSTANTS)
 // (Giúp code dễ đọc, dễ bảo trì thay vì dùng các con số 0, 1, 2 vô hồn)
@@ -143,26 +147,46 @@ function createOrder(data) {
   const formattedPrice = data.total_price.toLocaleString('vi-VN');
 
   // Chuẩn bị nội dung Email
+  // Tách văn xuôi giỏ hàng thành các dòng bằng thẻ <br>
+  const emailCartList = data.cart_summary.split(' | ').join('<br>📦 ');
+
+  // URL mã QR tự động ghép với tổng tiền và mã đơn hàng
+  const qrCodeUrl = `https://img.vietqr.io/image/TPBank-0868663315-compact1.jpg?amount=${data.total_price}&addInfo=DIGISTORE%20${data.order_id}&accountName=NGUYEN%20DINH%20HIEU`;
+
+  // HTML Email được làm đẹp, làm nổi bật tiền và thêm ảnh QR
   const emailHtml = `
-    <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
-      <h2 style="color: #6d28d9;">Cảm ơn bạn đã đặt hàng tại DigiStore!</h2>
+    <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px; background: #ffffff;">
+      <h2 style="color: #6d28d9; text-align: center;">Cảm ơn bạn đã đặt hàng tại DigiStore (Hiếu iceTea)!</h2>
       <p>Xin chào <b>${data.name}</b>,</p>
       <p>Hệ thống đã ghi nhận đơn hàng <b>${data.order_id}</b> của bạn.</p>
 
-      <div style="background: #f5f3ff; padding: 15px; border-radius: 8px; margin: 20px 0;">
-        <h4 style="margin-top:0; color: #4c1d95;">Chi tiết giỏ hàng:</h4>
-        <p>${data.cart_summary}</p>
-        <p><i>${data.discount_calc}</i></p>
-        <h3 style="color: #ef4444; margin-bottom: 0;">Tổng cần thanh toán: ${formattedPrice} VNĐ</h3>
+      <div style="background: #f5f3ff; padding: 20px; border-radius: 8px; border-left: 4px solid #7c3aed; margin: 20px 0;">
+        <h4 style="margin-top:0; color: #4c1d95; font-size: 15px; text-transform: uppercase;">Danh sách sản phẩm:</h4>
+        <div style="color: #333; font-size: 14px; line-height: 1.8; margin-bottom: 15px;">
+           📦 ${emailCartList}
+        </div>
+
+        <div style="background: #ffffff; padding: 15px; border-radius: 8px; border: 1px dashed #c4b5fd;">
+           <p style="color: #6d28d9; font-size: 13px; margin: 0 0 10px 0; line-height: 1.5;"><i>🏷️ Phân tích giá:<br>${data.discount_calc}</i></p>
+           <h3 style="color: #ef4444; margin: 0; font-size: 18px; border-top: 1px solid #f1f5f9; padding-top: 10px;">Thành tiền: ${formattedPrice} VNĐ</h3>
+        </div>
       </div>
 
-      <p>Để nhận sản phẩm tự động, bạn vui lòng mở App Ngân hàng và quét mã QR tại website, hoặc chuyển khoản tới:</p>
-      <ul>
-        <li>Ngân hàng: <b>MB Bank</b></li>
-        <li>Số tài khoản: <b>999920261111</b></li>
-        <li>Chủ tài khoản: <b>CONG TY TNHH DIGISTORE VIET NAM</b></li>
-        <li>Nội dung chuyển khoản (Bắt buộc): <b style="color: #ef4444;">DIGISTORE ${data.order_id}</b></li>
-      </ul>
+      <p style="text-align: center; font-size: 15px; font-weight: bold; color: #333;">Mời bạn quét mã QR dưới đây để thanh toán:</p>
+
+      <div style="text-align: center; margin: 20px 0;">
+         <img src="${qrCodeUrl}" alt="QR Thanh Toán" style="width: 250px; height: 250px; border-radius: 12px; border: 1px solid #eee; padding: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+      </div>
+
+      <div style="background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 14px; line-height: 1.8;">
+        <p style="margin: 0 0 10px 0; font-weight: bold; color: #475569;">Hoặc chuyển khoản thủ công:</p>
+        <ul style="list-style: none; padding: 0; margin: 0;">
+          <li>🏦 Ngân hàng: <b>TP Bank</b></li>
+          <li>💳 Số tài khoản: <b>0868663315</b></li>
+          <li>👤 Chủ tài khoản: <b>NGUYEN DINH HIEU (Cong ty TNHH DiGiStore Viet Nam)</b></li>
+          <li>📝 Nội dung (Bắt buộc): <b style="color: #ef4444; background: #fee2e2; padding: 2px 6px; border-radius: 4px;">DIGISTORE ${data.order_id}</b></li>
+        </ul>
+      </div>
 
       <p style="font-size: 12px; color: #666;"><i>Hệ thống sẽ tự động quét giao dịch và gửi tài khoản cho bạn trong vòng 30 giây ngay sau khi nhận được thanh toán thành công!</i></p>
     </div>

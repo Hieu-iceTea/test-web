@@ -537,13 +537,13 @@
     const productsData = [
         {
             id: "google-ai-pro",
-            name: "Google Gemini Advanced Pro",
+            name: "Google Gemini Advanced Pro (6 tháng)",
             category: "ai",
             categoryName: "Trí tuệ nhân tạo (AI)",
             rating: 4.9,
             reviews: 320,
-            price: generateRandomPrice(),
-            oldPrice: 350000,
+            price: 809000,
+            oldPrice: 962000,
             shortDesc: "Tài khoản Gemini Advanced sử dụng mô hình AI thông minh bậc nhất của Google. Tốc độ vượt trội, xử lý đa phương thức cực đỉnh.",
             longDesc: "Tài khoản Google AI Pro (Gemini Advanced) cung cấp cho bạn quyền truy cập độc quyền vào Gemini 1.5 Pro - một trong những mô hình AI lớn và có khả năng phân tích ngữ cảnh dài vượt trội nhất thế giới hiện nay. Dịch vụ này được thiết kế đặc biệt nhằm phục vụ các lập trình viên, nhà nghiên cứu, nhà sáng tạo nội dung số hoặc bất kỳ ai có mong muốn tối ưu hóa hiệu quả làm việc bằng AI thế hệ mới.",
             features: [
@@ -921,10 +921,8 @@
     let currentSort = "featured";
     let appliedCoupon = null;
 
-    const coupons = {
-        "DIGI2026": { type: "percent", value: 10, label: "GIẢM 10%" },
-        "UUDAI20K": { type: "fixed", value: 20000, label: "GIẢM 20K" }
-    };
+    const API_URL = "https://script.google.com/macros/s/AKfycbw50uvEZKLBD-2vO3Xu3ITlyHayhPSNvcX_gPF2AZWepV-mez30zpvyI6hJm3gMV_2M/exec";
+    let serverCoupons = {};
 
     // RENDER PRODUCTS
     function renderProducts() {
@@ -1552,16 +1550,46 @@
         document.getElementById("cartSubtotal").innerText = formatCurrency(subtotal);
 
         let discount = 0;
+        
         if (appliedCoupon && subtotal > 0) {
-            if (appliedCoupon.type === "percent") {
-                discount = Math.round(subtotal * (appliedCoupon.value / 100));
-            } else if (appliedCoupon.type === "fixed") {
-                discount = appliedCoupon.value;
+            // TÍNH TIỀN GIẢM CHỈ TRÊN CÁC SẢN PHẨM ĐƯỢC PHÉP ÁP DỤNG MÃ
+            let applicableSubtotal = subtotal;
+            
+            if (appliedCoupon.applicable && appliedCoupon.applicable.trim() !== "") {
+                // Tách danh sách ID ra và kiểm tra
+                const validIds = appliedCoupon.applicable.split(',').map(id => id.trim().toLowerCase());
+                applicableSubtotal = cart
+                    .filter(item => validIds.includes(item.product.id.toLowerCase()))
+                    .reduce((total, item) => total + (item.product.price * item.quantity), 0);
             }
 
-            document.getElementById("couponDiscountRow").classList.remove("hidden");
-            document.getElementById("discountName").innerText = appliedCoupon.code;
-            document.getElementById("cartDiscountAmount").innerText = `-${formatCurrency(discount)}`;
+            if (applicableSubtotal > 0) {
+                // 1. Tính mức giảm
+                if (appliedCoupon.type === "percent") {
+                    discount = Math.round(applicableSubtotal * (appliedCoupon.value / 100));
+                } else if (appliedCoupon.type === "fixed") {
+                    discount = Math.min(appliedCoupon.value, applicableSubtotal); // Không giảm lố tiền SP
+                }
+                // 2. Chặn mức giảm tối đa
+                if (appliedCoupon.max_discount && appliedCoupon.max_discount > 0) {
+                    discount = Math.min(discount, appliedCoupon.max_discount);
+                }
+            } else {
+                // Giỏ hàng hiện tại không còn SP nào áp dụng được mã này -> Hủy mã
+                discount = 0; 
+                appliedCoupon = null;
+                document.getElementById("couponStatus").classList.add("hidden");
+                document.getElementById("couponInput").value = "";
+            }
+
+            // Hiển thị ra UI
+            if (discount > 0) {
+                document.getElementById("couponDiscountRow").classList.remove("hidden");
+                document.getElementById("discountName").innerText = appliedCoupon.code;
+                document.getElementById("cartDiscountAmount").innerText = `-${formatCurrency(discount)}`;
+            } else {
+                document.getElementById("couponDiscountRow").classList.add("hidden");
+            }
         } else {
             document.getElementById("couponDiscountRow").classList.add("hidden");
         }
@@ -1579,24 +1607,62 @@
             return;
         }
 
-        if (coupons[codeInput]) {
+        const coupon = serverCoupons[codeInput];
+
+        if (coupon) {
+            // --- VALIDATE 1: KIỂM TRA HẠN SỬ DỤNG ---
+            if (coupon.expiry) {
+                const expiryDate = new Date(coupon.expiry);
+                const now = new Date();
+                expiryDate.setHours(23, 59, 59, 999); // Tính hết ngày hôm đó mới là hết hạn
+                if (now > expiryDate) {
+                    showCouponError("Mã giảm giá này đã hết hạn sử dụng.");
+                    return;
+                }
+            }
+
+            // --- VALIDATE 2: KIỂM TRA SẢN PHẨM ÁP DỤNG ---
+            if (coupon.applicable && coupon.applicable.trim() !== "") {
+                const validIds = coupon.applicable.split(',').map(id => id.trim().toLowerCase());
+                const hasApplicableProduct = cart.some(item => validIds.includes(item.product.id.toLowerCase()));
+                
+                if (!hasApplicableProduct) {
+                    showCouponError("Mã này không áp dụng cho các sản phẩm trong giỏ hàng.");
+                    return;
+                }
+            }
+
+            // Vượt qua Validate -> Chấp nhận mã
             appliedCoupon = {
                 code: codeInput,
-                type: coupons[codeInput].type,
-                value: coupons[codeInput].value
+                type: coupon.type,
+                value: coupon.value,
+                max_discount: coupon.max_discount,
+                applicable: coupon.applicable
             };
+
+            // --- HIỂN THỊ ĐẦY ĐỦ THÔNG TIN TRÊN UI ---
+            let infoText = coupon.type === "percent" ? `Giảm ${coupon.value}%` : `Giảm ${formatCurrency(coupon.value)}`;
+            if (coupon.max_discount) infoText += ` (Tối đa ${formatCurrency(coupon.max_discount)})`;
+            if (coupon.applicable) infoText += ` cho sản phẩm chỉ định.`;
 
             status.classList.remove("hidden", "text-red-500");
             status.classList.add("text-emerald-500");
-            status.innerText = `Áp dụng thành công mã ${codeInput}!`;
-            showToast(`Chúc mừng! Bạn đã được áp dụng mã giảm giá ${coupons[codeInput].label} 🎉`);
+            status.innerText = `Thành công! ${infoText}`;
+            showToast(`Áp dụng mã thành công 🎉`);
+            
             updatePrices();
         } else {
+            showCouponError("Mã giảm giá không hợp lệ hoặc đã hết lượt.");
+        }
+
+        // Hàm phụ để xử lý hiển thị lỗi gọn gàng hơn
+        function showCouponError(msg) {
             appliedCoupon = null;
             status.classList.remove("hidden", "text-emerald-500");
             status.classList.add("text-red-500");
-            status.innerText = "Mã giảm giá không hợp lệ hoặc đã hết hạn.";
-            showToast("Không tìm thấy mã giảm giá này", "error");
+            status.innerText = msg;
+            showToast(msg, "error");
             updatePrices();
         }
     }
@@ -1627,10 +1693,29 @@
     function showCheckoutForm() {
         const container = document.getElementById("checkoutFlowContainer");
         const subtotal = cart.reduce((total, item) => total + (item.product.price * item.quantity), 0);
+        
+        // TÍNH TOÁN LẠI CHÍNH XÁC SỐ TIỀN GIẢM Ở BƯỚC CHECKOUT (Hỗ trợ logic applicable products)
         let discount = 0;
-        if (appliedCoupon) {
-            discount = appliedCoupon.type === "percent" ? Math.round(subtotal * (appliedCoupon.value / 100)) : appliedCoupon.value;
+        if (appliedCoupon && subtotal > 0) {
+            let applicableSubtotal = subtotal;
+            if (appliedCoupon.applicable && appliedCoupon.applicable.trim() !== "") {
+                const validIds = appliedCoupon.applicable.split(',').map(id => id.trim().toLowerCase());
+                applicableSubtotal = cart
+                    .filter(item => validIds.includes(item.product.id.toLowerCase()))
+                    .reduce((total, item) => total + (item.product.price * item.quantity), 0);
+            }
+            if (applicableSubtotal > 0) {
+                if (appliedCoupon.type === "percent") {
+                    discount = Math.round(applicableSubtotal * (appliedCoupon.value / 100));
+                } else if (appliedCoupon.type === "fixed") {
+                    discount = Math.min(appliedCoupon.value, applicableSubtotal);
+                }
+                if (appliedCoupon.max_discount && appliedCoupon.max_discount > 0) {
+                    discount = Math.min(discount, appliedCoupon.max_discount);
+                }
+            }
         }
+        
         const finalAmount = Math.max(0, subtotal - discount);
 
         container.innerHTML = `
@@ -1691,11 +1776,52 @@
         const email = document.getElementById("chkEmail").value;
         const note = document.getElementById("chkNote").value;
 
-        // Generate an order ID
-        const orderId = "DIGI" + Math.floor(100000 + Math.random() * 900000);
+        // 1. TỰ ĐỘNG TẠO MÃ ĐƠN HÀNG (Zero-latency)
+        const orderId = "DIGI" + Date.now().toString().slice(-5) + Math.floor(Math.random() * 9);
 
-        // Transition to QR transfer screen
+        // 2. HIỂN THỊ MÃ QR CHUYỂN KHOẢN NGAY LẬP TỨC (0s chờ đợi)
         showBankTransferScreen(name, phone, email, amount, orderId);
+
+        // 3. XỬ LÝ DỮ LIỆU ĐỂ GỬI LÊN SERVER
+        // a. Gom giỏ hàng thành câu văn xuôi cho Admin dễ đọc
+        const cartSummary = cart.map(item => `${item.quantity}x ${item.product.name}`).join(" | ");
+        
+        // b. Gom giỏ hàng thành dạng JSON để máy tính xử lý sau này
+        const cartJson = cart.map(item => ({ id: item.product.id, qty: item.quantity }));
+        
+        // c. Viết câu văn xuôi giải thích cách tính tiền
+        let discountCalc = "Không dùng mã giảm giá.";
+        let couponCode = "";
+        const subtotal = cart.reduce((total, item) => total + (item.product.price * item.quantity), 0);
+        
+        if (appliedCoupon) {
+            couponCode = appliedCoupon.code;
+            let discountAmt = subtotal - amount; // Số tiền thực tế được giảm
+            discountCalc = `Tạm tính: ${formatCurrency(subtotal)}. Nhập mã ${couponCode}. Đã giảm: ${formatCurrency(discountAmt)}.`;
+        }
+
+        // Đóng gói toàn bộ data theo chuẩn của Database V3
+        const dataPayload = {
+            order_id: orderId,
+            name: name,
+            phone: phone,
+            email: email,
+            cart_summary: cartSummary,
+            cart: cartJson,
+            coupon_code: couponCode,
+            discount_calc: discountCalc,
+            total_price: amount,
+            note: note
+        };
+
+        // 4. GỬI DỮ LIỆU LÊN GOOGLE SHEETS Ở CHẾ ĐỘ NỀN (Fire-and-forget)
+        fetch(API_URL, {
+            method: "POST",
+            body: JSON.stringify({ action: "create_order", data: dataPayload })
+        })
+        .then(res => res.json())
+        .then(resData => console.log("Ghi DB & Gửi mail thành công:", resData))
+        .catch(err => console.error("Lỗi Background Sync:", err));
     }
 
     function showBankTransferScreen(name, phone, email, amount, orderId) {
@@ -1718,28 +1844,28 @@
                         <!-- QR Code -->
                         <div class="space-y-2">
                             <div class="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm inline-block">
-                                <!-- Simulated QR code representing banking -->
-                                <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=STB%20999920261111%20${amount}%20${encodeURIComponent(transferCode)}" alt="Mã chuyển khoản VietQR" class="w-[180px] h-[180px] mx-auto">
+                            <!-- Simulated QR code representing banking -->
+                                <img src="https://img.vietqr.io/image/TPBank-0868663315-compact1.jpg?amount=${amount}&addInfo=${encodeURIComponent(transferCode)}&accountName=NGUYEN%20DINH%20HIEU" alt="Mã chuyển khoản VietQR" class="w-[180px] h-[180px] mx-auto rounded-lg">
                             </div>
-                            <p class="text-[10px] text-slate-400 dark:text-slate-500 font-bold"><i class="fa-solid fa-expand"></i> Quét mã QR bằng App Ngân hàng (VietQR)</p>
+                            <p class="text-[10px] text-slate-400 dark:text-slate-500 font-bold"><i class="fa-solid fa-expand"></i> Quét mã QR bằng App Ngân hàng</p>
                         </div>
 
                         <!-- Banking manual details -->
                         <div class="text-left space-y-3.5">
                             <div class="space-y-1">
                                 <span class="text-slate-400 text-[10px]">Tên Ngân hàng:</span>
-                                <p class="font-bold text-slate-800 dark:text-slate-200">MB Bank (Ngân Hàng Quân Đội)</p>
+                                <p class="font-bold text-slate-800 dark:text-slate-200">TP Bank</p>
                             </div>
                             <div class="space-y-1">
                                 <span class="text-slate-400 text-[10px]">Số tài khoản nhận:</span>
                                 <div class="flex items-center gap-2">
-                                    <span class="font-black text-slate-900 dark:text-white" id="bankAcc">999920261111</span>
+                                    <span class="font-black text-slate-900 dark:text-white" id="bankAcc">0868663315</span>
                                     <button onclick="copyToClipboard('bankAcc')" class="text-brand-600 hover:text-brand-700 font-bold text-[10px]"><i class="fa-regular fa-copy"></i> Sao chép</button>
                                 </div>
                             </div>
                             <div class="space-y-1">
                                 <span class="text-slate-400 text-[10px]">Chủ tài khoản:</span>
-                                <p class="font-bold text-slate-800 dark:text-slate-200">CONG TY TNHH DIGISTORE VIET NAM</p>
+                                <p class="font-bold text-slate-800 dark:text-slate-200">NGUYEN DINH HIEU (Cong ty TNHH DiGiStore Viet Nam)</p>
                             </div>
                             <div class="space-y-1">
                                 <span class="text-slate-400 text-[10px]">Số tiền cần chuyển:</span>
@@ -1947,6 +2073,17 @@
         renderProducts();
         updateFavBadge();
         updateCartBadge();
+
+        // Fetch coupons from Server automatically on load
+        fetch(API_URL + "?action=get_coupons")
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    serverCoupons = data.coupons; // Lưu vào biến RAM
+                    console.log("Đã tải xong kho Mã giảm giá siêu tốc từ Server!");
+                }
+            })
+            .catch(err => console.error("Lỗi khi tải mã giảm giá:", err));
     });
 </script>
 </body>
